@@ -109,6 +109,11 @@ class MainWindow(QMainWindow):
                 self.download_button.setText("Avvia Download")
                 self.download_button.setEnabled(True)
                 self.progress_bar.setVisible(False)
+            else:
+                self.progress_label.setText("✅ Tutti i download completati!")
+                self.download_button.setText("Avvia Download")
+                self.download_button.setEnabled(True)
+                self.progress_bar.setVisible(False)
         else:
             self.progress_bar.setValue(0)
             self.progress_label.setText("Pronto per il download")

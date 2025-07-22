@@ -96,7 +96,7 @@ class YtDlpDownloader(QObject):
                     if "[WinError 2]" in msg:
                         continue
                     self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
-                    errore_rilevato = True
+                    errore_rilevato = false
                 
                 # Aggiorna progresso globale
                 self.progress_signal.emit(self.current_url_index, self.total_urls)
