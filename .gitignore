@@ -1,1 +1,4 @@
 
+ffmpeg/bin/ffmpeg.exe
+ffmpeg/bin/ffplay.exe
+ffmpeg/bin/ffprobe.exe
