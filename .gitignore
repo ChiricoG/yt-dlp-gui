@@ -18,3 +18,4 @@ build/yt-dlp-gui/warn-yt-dlp-gui.txt
 build/yt-dlp-gui/xref-yt-dlp-gui.html
 build/yt-dlp-gui/yt-dlp-gui.pkg
 dist/yt-dlp-gui.exe
+main.spec
