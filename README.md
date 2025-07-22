@@ -12,7 +12,7 @@ Built-in `ffmpeg` support allows this tool to run on Windows machines without re
 - Choose between quality presets
 - Optional subtitles download
 - Proxy and simulation options
-- Includes `ffmpeg` bundled for standalone use
+- Includes `ffmpeg` bundled for standalone use (release only, can't upload ffmpeg in the repo)
 - Simple and clean interface using PySide6
 
 ---
