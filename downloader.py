@@ -1,8 +1,8 @@
 from PySide6.QtCore import QObject, Signal
 from yt_dlp import YoutubeDL
 import os
-import os
 import sys
+from pathlib import Path
 
 # Supporto path per PyInstaller
 if getattr(sys, 'frozen', False):
@@ -11,6 +11,7 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 FFMPEG_DIR = os.path.join(BASE_DIR, "ffmpeg", "bin")
+FFMPEG_PATH = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 
 class YtDlpDownloader(QObject):
     log_signal = Signal(str)
@@ -21,8 +22,14 @@ class YtDlpDownloader(QObject):
         self.options = options
 
     def run(self):
+        # Log diagnostico per ffmpeg
+        if os.path.exists(FFMPEG_PATH):
+            self.log_signal.emit(f"[INFO] ✅ ffmpeg found at: {FFMPEG_PATH}")
+        else:
+            self.log_signal.emit(f"[WARNING] ❌ ffmpeg NOT found at: {FFMPEG_PATH} — merge might fail!")
+
         ydl_opts = {
-    'ffmpeg_location': FFMPEG_DIR,
+            "ffmpeg_location": FFMPEG_DIR,
             "format": self._build_format(),
             "outtmpl": os.path.join(self.options["output_path"], "%(title)s.%(ext)s"),
             "quiet": True,
@@ -58,7 +65,6 @@ class YtDlpDownloader(QObject):
                 except Exception as e:
                     msg = str(e)
                     if "[WinError 2]" in msg:
-                        # Ignora questo errore ma segnalo che è successo qualcosa
                         errore_rilevato = True
                         continue
                     self.log_signal.emit(f"Errore: {msg}")
