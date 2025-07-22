@@ -15,11 +15,15 @@ FFMPEG_PATH = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 
 class YtDlpDownloader(QObject):
     log_signal = Signal(str)
+    progress_signal = Signal(int, int)  # (current, total)
     finished = Signal()
 
     def __init__(self, options):
         super().__init__()
         self.options = options
+        self.current_url_index = 0
+        self.total_urls = len(options["urls"])
+        self.current_download_progress = 0
 
     def run(self):
         # Log diagnostico per ffmpeg
@@ -36,44 +40,82 @@ class YtDlpDownloader(QObject):
             "noprogress": True,
             "simulate": self.options["simulate"],
             "writesubtitles": self.options["subs"],
-            "proxy": "http://127.0.0.1:8080" if self.options["proxy"] else None,
             "progress_hooks": [self._hook],
-            "merge_output_format": "mp4",
             "keepvideo": False,
             "logger": self,
-            "postprocessors": [
+        }
+
+        # Configurazione postprocessors diversa per audio e video
+        if self.options["audio_only"]:
+            ydl_opts["postprocessors"] = [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }
+            ]
+        else:
+            # Per video o audio+video
+            ydl_opts["merge_output_format"] = "mp4"
+            ydl_opts["postprocessors"] = [
                 {"key": "FFmpegMerger"},
                 {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"},
                 {"key": "FFmpegConcat", "only_multi_video": True}
             ]
-        }
-
-        if self.options["audio_only"]:
-            ydl_opts["format"] = "bestaudio"
-            ydl_opts["postprocessors"].append({
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            })
 
         errore_rilevato = False
+        
+        # Log inizio operazione
+        if self.total_urls > 1:
+            self.log_signal.emit(f"🚀 Inizio download di {self.total_urls} URL...")
+        else:
+            self.log_signal.emit("🚀 Inizio download...")
+        
+        self.progress_signal.emit(0, self.total_urls)
 
         with YoutubeDL(ydl_opts) as ydl:
-            for url in self.options["urls"]:
+            for i, url in enumerate(self.options["urls"]):
+                self.current_url_index = i + 1
+                self.current_download_progress = 0
+                
+                # Log URL corrente
+                if self.total_urls > 1:
+                    self.log_signal.emit(f"\n📺 [{self.current_url_index}/{self.total_urls}] Elaborazione: {url[:50]}{'...' if len(url) > 50 else ''}")
+                else:
+                    self.log_signal.emit(f"📺 Elaborazione: {url[:50]}{'...' if len(url) > 50 else ''}")
+                
                 try:
                     ydl.download([url])
+                    if self.total_urls > 1:
+                        self.log_signal.emit(f"✅ [{self.current_url_index}/{self.total_urls}] Completato!")
+                    else:
+                        self.log_signal.emit("✅ Download completato!")
+                        
                 except Exception as e:
                     msg = str(e)
                     if "[WinError 2]" in msg:
+                        self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: ffmpeg non trovato")
                         errore_rilevato = True
                         continue
-                    self.log_signal.emit(f"Errore: {msg}")
+                    self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
                     errore_rilevato = True
+                
+                # Aggiorna progresso globale
+                self.progress_signal.emit(self.current_url_index, self.total_urls)
 
+        # Messaggio finale più dettagliato
+        self.log_signal.emit("\n" + "="*50)
         if not errore_rilevato:
-            self.log_signal.emit("✅ Operazioni completate con successo!")
+            if self.total_urls > 1:
+                self.log_signal.emit(f"🎉 COMPLETATO! Tutti i {self.total_urls} download eseguiti con successo!")
+            else:
+                self.log_signal.emit("🎉 COMPLETATO! Download eseguito con successo!")
         else:
-            self.log_signal.emit("✅ Operazioni completate con successo!")
+            completed = self.current_url_index - (1 if errore_rilevato else 0)
+            if self.total_urls > 1:
+                self.log_signal.emit(f"⚠️ COMPLETATO CON ERRORI! {completed}/{self.total_urls} download riusciti.")
+            else:
+                self.log_signal.emit("❌ Download completato con errori!")
 
         self.finished.emit()
 
@@ -81,7 +123,8 @@ class YtDlpDownloader(QObject):
         q = self.options["quality"].lower()
 
         if self.options["audio_only"]:
-            return "bestaudio"
+            # Per solo audio, usa il miglior formato audio disponibile
+            return "bestaudio/best"
 
         if self.options["video_only"]:
             if q == "best":
@@ -106,12 +149,21 @@ class YtDlpDownloader(QObject):
 
     def _hook(self, d):
         if d["status"] == "downloading":
-            percent = d.get("_percent_str", "").strip()
-            speed = d.get("_speed_str", "").strip()
-            eta = d.get("_eta_str", "")
-            self.log_signal.emit(f"⬇ {percent} @ {speed} ETA {eta}")
+            percent = d.get("_percent_str", "N/A").strip()
+            speed = d.get("_speed_str", "N/A").strip()
+            eta = d.get("_eta_str", "N/A")
+            
+            # Progresso dettagliato con info globale
+            if self.total_urls > 1:
+                self.log_signal.emit(f"⬇ [{self.current_url_index}/{self.total_urls}] {percent} @ {speed} ETA {eta}")
+            else:
+                self.log_signal.emit(f"⬇ {percent} @ {speed} ETA {eta}")
+                
         elif d["status"] == "finished":
-            self.log_signal.emit("✅ Download completato, inizio post-processing...")
+            if self.total_urls > 1:
+                self.log_signal.emit(f"✅ [{self.current_url_index}/{self.total_urls}] Download completato, inizio post-processing...")
+            else:
+                self.log_signal.emit("✅ Download completato, inizio post-processing...")
 
     def debug(self, msg):
         self.log_signal.emit(f"[DEBUG] {msg}")
