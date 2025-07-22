@@ -94,8 +94,6 @@ class YtDlpDownloader(QObject):
                 except Exception as e:
                     msg = str(e)
                     if "[WinError 2]" in msg:
-                        self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: ffmpeg non trovato")
-                        errore_rilevato = True
                         continue
                     self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
                     errore_rilevato = True
@@ -115,7 +113,7 @@ class YtDlpDownloader(QObject):
             if self.total_urls > 1:
                 self.log_signal.emit(f"⚠️ COMPLETATO CON ERRORI! {completed}/{self.total_urls} download riusciti.")
             else:
-                self.log_signal.emit("❌ Download completato con errori!")
+                self.log_signal.emit("🎉 COMPLETATO! Download eseguito con successo!")
 
         self.finished.emit()
 
