@@ -3,6 +3,7 @@ import shutil
 import importlib.util
 import os
 import sys
+import subprocess
 
 # Supporto path per PyInstaller
 if getattr(sys, 'frozen', False):
