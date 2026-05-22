@@ -22,6 +22,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("yt-dlp GUI - ChiricoG 2025")
         self.setMinimumSize(600, 500)
+        self.is_downloading = False
+        self.worker = None
+        self.thread = None
         self._init_ui()
 
     def _init_ui(self):
@@ -80,7 +83,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log_output)
 
         self.download_button = QPushButton("Avvia Download")
-        self.download_button.clicked.connect(self.start_download)
+        self.download_button.clicked.connect(self.on_download_button_clicked)
         layout.addWidget(self.download_button)
 
         central.setLayout(layout)
@@ -119,6 +122,17 @@ class MainWindow(QMainWindow):
             self.log("⚠️ ffmpeg non trovato nella cartella locale. Alcune funzionalità potrebbero non funzionare.")
 
         self.ffmpeg_button.setVisible(False)
+
+    def on_download_button_clicked(self):
+        """Gestisce il click del pulsante: avvia o annulla il download."""
+        if self.is_downloading:
+            # Richiedi annullamento
+            if self.worker:
+                self.worker.stop_requested = True
+            self.download_button.setText("Annullamento...")
+            self.download_button.setEnabled(False)
+        else:
+            self.start_download()
 
     def start_download(self):
         # Validazione base
@@ -161,8 +175,27 @@ class MainWindow(QMainWindow):
         self.thread.started.connect(self.worker.run)
         self.worker.log_signal.connect(self.log)
         self.worker.progress_signal.connect(self.update_progress)
+        self.worker.finished.connect(self.on_download_finished)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
+        self.is_downloading = True
         self.thread.start()
+
+    def on_download_finished(self):
+        """Reimposta la UI al termine del download (sia normale che annullato)."""
+        self.is_downloading = False
+        self.worker = None
+        self.thread = None
+        self.download_button.setText("Avvia Download")
+        self.download_button.setEnabled(True)
+        self.progress_bar.setVisible(False)
+
+    def closeEvent(self, event):
+        """Chiusura sicura: attende la fine del thread se un download è attivo."""
+        if self.is_downloading and self.worker and self.thread:
+            self.worker.stop_requested = True
+            self.thread.quit()
+            self.thread.wait(3000)  # Attende max 3 secondi
+        event.accept()

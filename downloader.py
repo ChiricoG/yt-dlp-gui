@@ -24,6 +24,7 @@ class YtDlpDownloader(QObject):
         self.current_url_index = 0
         self.total_urls = len(options["urls"])
         self.current_download_progress = 0
+        self.stop_requested = False
 
     def run(self):
         # Log diagnostico per ffmpeg
@@ -95,10 +96,16 @@ class YtDlpDownloader(QObject):
                         
                 except Exception as e:
                     msg = str(e)
-                    if "[WinError 2]" in msg:
-                        continue
-                    self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
-                    errore_rilevato = True
+                    if "Download annullato dall'utente" in msg:
+                        self.log_signal.emit("⚠️ Download annullato dall'utente.")
+                        errore_rilevato = True
+                        break
+                    elif "[WinError 2]" in msg:
+                        self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: FFmpeg non trovato o non configurato correttamente.")
+                        errore_rilevato = True
+                    else:
+                        self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
+                        errore_rilevato = True
                 
                 # Aggiorna progresso globale
                 self.progress_signal.emit(self.current_url_index, self.total_urls)
@@ -147,6 +154,9 @@ class YtDlpDownloader(QObject):
         return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
     def _hook(self, d):
+        if self.stop_requested:
+            raise ValueError("Download annullato dall'utente")
+        
         if d["status"] == "downloading":
             percent = d.get("_percent_str", "N/A").strip()
             speed = d.get("_speed_str", "N/A").strip()
