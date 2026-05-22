@@ -17,7 +17,13 @@ def get_ffmpeg_status():
     import os
     import subprocess
     import sys
+    import shutil
 
+    # 1. Controlla se ffmpeg è presente nel PATH globale di sistema
+    if shutil.which("ffmpeg"):
+        return True
+
+    # 2. Controlla se ffmpeg è presente localmente
     if getattr(sys, 'frozen', False):
         BASE_DIR = sys._MEIPASS
     else:

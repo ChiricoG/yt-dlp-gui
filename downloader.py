@@ -64,6 +64,7 @@ class YtDlpDownloader(QObject):
             ]
 
         errore_rilevato = False
+        success_count = 0
         
         # Log inizio operazione
         if self.total_urls > 1:
@@ -86,6 +87,7 @@ class YtDlpDownloader(QObject):
                 
                 try:
                     ydl.download([url])
+                    success_count += 1
                     if self.total_urls > 1:
                         self.log_signal.emit(f"✅ [{self.current_url_index}/{self.total_urls}] Completato!")
                     else:
@@ -96,7 +98,7 @@ class YtDlpDownloader(QObject):
                     if "[WinError 2]" in msg:
                         continue
                     self.log_signal.emit(f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}")
-                    errore_rilevato = false
+                    errore_rilevato = True
                 
                 # Aggiorna progresso globale
                 self.progress_signal.emit(self.current_url_index, self.total_urls)
@@ -109,11 +111,10 @@ class YtDlpDownloader(QObject):
             else:
                 self.log_signal.emit("🎉 COMPLETATO! Download eseguito con successo!")
         else:
-            completed = self.current_url_index - (1 if errore_rilevato else 0)
             if self.total_urls > 1:
-                self.log_signal.emit(f"⚠️ COMPLETATO CON ERRORI! {completed}/{self.total_urls} download riusciti.")
+                self.log_signal.emit(f"⚠️ COMPLETATO CON ERRORI! {success_count}/{self.total_urls} download riusciti.")
             else:
-                self.log_signal.emit("🎉 COMPLETATO! Download eseguito con successo!")
+                self.log_signal.emit("❌ ERRORE! Download fallito.")
 
         self.finished.emit()
 
