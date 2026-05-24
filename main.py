@@ -7,6 +7,7 @@ import sys
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
 
     if not get_ffmpeg_status():
         dialog = FFmpegDialog()

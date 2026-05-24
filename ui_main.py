@@ -139,6 +139,10 @@ class MainWindow(QMainWindow):
         return dest
 
     def start_download(self):
+        if self.is_downloading or (self.thread and self.thread.isRunning()):
+            self.log("[ERRORE] Attendi la fine del download in corso.")
+            return
+
         urls = parse_urls(self.url_input.toPlainText())
         if not urls:
             self.log("[ERRORE] Inserisci almeno un URL valido!")
@@ -148,6 +152,8 @@ class MainWindow(QMainWindow):
         output_path = self._validate_destination(simulate)
         if output_path is None:
             return
+
+        self.log_output.clear()
 
         self.download_button.setText("Annulla download")
         self.download_button.setEnabled(True)
@@ -191,7 +197,10 @@ class MainWindow(QMainWindow):
         self.download_button.setText("Avvia Download")
         self.download_button.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText("Pronto per il download")
+        self.progress_label.setText("Download terminato - puoi avviarne un altro")
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def closeEvent(self, event):
         if self.is_downloading and self.worker:
