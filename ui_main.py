@@ -1,21 +1,14 @@
+import os
+import tempfile
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTextEdit, QPushButton, QRadioButton,
-    QComboBox, QFileDialog, QCheckBox, QProgressBar
+    QComboBox, QFileDialog, QCheckBox, QProgressBar, QButtonGroup,
 )
 from PySide6.QtCore import Qt, QThread
 from downloader import YtDlpDownloader
-from utils import get_ffmpeg_status
-import os
-import sys
+from utils import get_ffmpeg_status, get_persistent_ffmpeg_dir, get_bundled_ffmpeg_dir, parse_urls
 
-# Supporto path per PyInstaller
-if getattr(sys, 'frozen', False):
-    BASE_DIR = sys._MEIPASS
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-FFMPEG_DIR = os.path.join(BASE_DIR, "ffmpeg", "bin")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -31,8 +24,9 @@ class MainWindow(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout()
 
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Incolla uno o più URL separati da spazi")
+        self.url_input = QTextEdit()
+        self.url_input.setPlaceholderText("Incolla uno o più URL (uno per riga, oppure separati da spazi)")
+        self.url_input.setMaximumHeight(80)
         layout.addWidget(QLabel("URL Video:"))
         layout.addWidget(self.url_input)
 
@@ -41,6 +35,10 @@ class MainWindow(QMainWindow):
         self.radio_video = QRadioButton("Solo Video")
         self.radio_both = QRadioButton("Audio + Video")
         self.radio_both.setChecked(True)
+        self.format_group = QButtonGroup(self)
+        self.format_group.addButton(self.radio_audio)
+        self.format_group.addButton(self.radio_video)
+        self.format_group.addButton(self.radio_both)
         format_layout.addWidget(self.radio_audio)
         format_layout.addWidget(self.radio_video)
         format_layout.addWidget(self.radio_both)
@@ -65,17 +63,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.checkbox_subs)
         layout.addWidget(self.checkbox_simulate)
 
-        # Progress bar globale
         self.progress_label = QLabel("Pronto per il download")
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_label)
         layout.addWidget(self.progress_bar)
-
-        # Pulsante disabilitato permanentemente
-        self.ffmpeg_button = QPushButton("Individua ffmpeg...")
-        self.ffmpeg_button.setVisible(False)
-        layout.addWidget(self.ffmpeg_button)
 
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
@@ -89,7 +81,11 @@ class MainWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
-        self.check_dependencies()
+        if not get_ffmpeg_status():
+            self.log(
+                f"⚠️ ffmpeg non trovato (né di sistema, né in {get_persistent_ffmpeg_dir()}, "
+                f"né in {get_bundled_ffmpeg_dir()}). Alcune funzionalità potrebbero non funzionare."
+            )
 
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Scegli cartella destinazione")
@@ -100,33 +96,18 @@ class MainWindow(QMainWindow):
         self.log_output.append(msg)
 
     def update_progress(self, current, total):
-        """Aggiorna la progress bar globale"""
         if total > 0:
             progress_percent = int((current / total) * 100)
             self.progress_bar.setValue(progress_percent)
-            self.progress_label.setText(f"Progresso: {current}/{total} completati ({progress_percent}%)")
-            
-            if current == total:
-                # Download completato
-                self.progress_label.setText("✅ Tutti i download completati!")
-                self.download_button.setText("Avvia Download")
-                self.download_button.setEnabled(True)
-                self.progress_bar.setVisible(False)
+            self.progress_label.setText(
+                f"Progresso: {current}/{total} completati ({progress_percent}%)"
+            )
         else:
             self.progress_bar.setValue(0)
             self.progress_label.setText("Pronto per il download")
 
-    def check_dependencies(self):
-        # Verifica solo se ffmpeg è disponibile nella cartella locale
-        if not get_ffmpeg_status():
-            self.log("⚠️ ffmpeg non trovato nella cartella locale. Alcune funzionalità potrebbero non funzionare.")
-
-        self.ffmpeg_button.setVisible(False)
-
     def on_download_button_clicked(self):
-        """Gestisce il click del pulsante: avvia o annulla il download."""
         if self.is_downloading:
-            # Richiedi annullamento
             if self.worker:
                 self.worker.stop_requested = True
             self.download_button.setText("Annullamento...")
@@ -134,38 +115,52 @@ class MainWindow(QMainWindow):
         else:
             self.start_download()
 
+    def _validate_destination(self, simulate):
+        if simulate:
+            dest = self.dest_path.text().strip() or tempfile.gettempdir()
+            return dest
+
+        dest = self.dest_path.text().strip()
+        if not dest:
+            self.log("❌ Seleziona una cartella di destinazione!")
+            return None
+        if not os.path.isdir(dest):
+            self.log("❌ La cartella di destinazione non esiste!")
+            return None
+        if not os.access(dest, os.W_OK):
+            self.log("❌ La cartella di destinazione non è scrivibile!")
+            return None
+        return dest
+
     def start_download(self):
-        # Validazione base
-        urls = [url.strip() for url in self.url_input.text().strip().split() if url.strip()]
+        urls = parse_urls(self.url_input.toPlainText())
         if not urls:
             self.log("❌ Inserisci almeno un URL valido!")
             return
-            
-        if not self.dest_path.text().strip():
-            self.log("❌ Seleziona una cartella di destinazione!")
+
+        simulate = self.checkbox_simulate.isChecked()
+        output_path = self._validate_destination(simulate)
+        if output_path is None:
             return
 
-        # Setup UI per download
-        self.download_button.setText("Download in corso...")
-        self.download_button.setEnabled(False)
+        self.download_button.setText("Annulla download")
+        self.download_button.setEnabled(True)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Inizializzazione...")
-        
-        # Log di inizio
+
         if len(urls) > 1:
-            self.log(f"\n🎬 === INIZIO SESSIONE DOWNLOAD ===")
+            self.log("\n🎬 === INIZIO SESSIONE DOWNLOAD ===")
             self.log(f"📋 URLs da scaricare: {len(urls)}")
-        
+
         options = {
             "urls": urls,
             "audio_only": self.radio_audio.isChecked(),
             "video_only": self.radio_video.isChecked(),
-            "both": self.radio_both.isChecked(),
             "quality": self.quality_combo.currentText(),
-            "output_path": self.dest_path.text().strip(),
+            "output_path": output_path,
             "subs": self.checkbox_subs.isChecked(),
-            "simulate": self.checkbox_simulate.isChecked(),
+            "simulate": simulate,
         }
 
         self.thread = QThread()
@@ -184,18 +179,17 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
     def on_download_finished(self):
-        """Reimposta la UI al termine del download (sia normale che annullato)."""
         self.is_downloading = False
         self.worker = None
         self.thread = None
         self.download_button.setText("Avvia Download")
         self.download_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+        self.progress_label.setText("Pronto per il download")
 
     def closeEvent(self, event):
-        """Chiusura sicura: attende la fine del thread se un download è attivo."""
-        if self.is_downloading and self.worker and self.thread:
+        if self.is_downloading and self.worker:
             self.worker.stop_requested = True
-            self.thread.quit()
-            self.thread.wait(3000)  # Attende max 3 secondi
+            if self.thread and self.thread.isRunning():
+                self.thread.wait(10000)
         event.accept()
