@@ -6,6 +6,7 @@ from utils import (
     get_ffmpeg_location_for_ytdlp,
     get_ffmpeg_snapshot,
     get_local_ffmpeg_path,
+    sanitize_log_text,
 )
 
 class YtDlpDownloader(QObject):
@@ -22,17 +23,20 @@ class YtDlpDownloader(QObject):
         self._last_progress_log = 0.0
         self._last_progress_pct = ""
 
+    def _log(self, msg):
+        self.log_signal.emit(sanitize_log_text(msg))
+
     def run(self):
         snap = get_ffmpeg_snapshot()
         if snap["local_valid"]:
-            self.log_signal.emit(
-                f"[INFO] ✅ ffmpeg {snap['local_kind']}: {get_local_ffmpeg_path()}"
+            self._log(
+                f"[INFO] OK - ffmpeg {snap['local_kind']}: {get_local_ffmpeg_path()}"
             )
         elif snap["system"]:
-            self.log_signal.emit("[INFO] ✅ ffmpeg di sistema (PATH)")
+            self._log("[INFO] OK - ffmpeg di sistema (PATH)")
         else:
-            self.log_signal.emit(
-                "[WARNING] ❌ ffmpeg non trovato — merge/conversione potrebbero fallire!"
+            self._log(
+                "[WARNING] ffmpeg non trovato - merge/conversione potrebbero fallire!"
             )
 
         ydl_opts = {
@@ -40,6 +44,7 @@ class YtDlpDownloader(QObject):
             "outtmpl": os.path.join(self.options["output_path"], "%(title)s.%(ext)s"),
             "quiet": True,
             "noprogress": True,
+            "no_color": True,
             "simulate": self.options["simulate"],
             "writesubtitles": self.options["subs"],
             "writeautomaticsub": self.options["subs"],
@@ -74,9 +79,9 @@ class YtDlpDownloader(QObject):
         success_count = 0
 
         if self.total_urls > 1:
-            self.log_signal.emit(f"🚀 Inizio download di {self.total_urls} URL...")
+            self._log(f"Inizio download di {self.total_urls} URL...")
         else:
-            self.log_signal.emit("🚀 Inizio download...")
+            self._log("Inizio download...")
 
         self.progress_signal.emit(0, self.total_urls)
 
@@ -91,24 +96,24 @@ class YtDlpDownloader(QObject):
                 self._last_progress_log = 0.0
 
                 if self.total_urls > 1:
-                    self.log_signal.emit(
-                        f"\n📺 [{self.current_url_index}/{self.total_urls}] "
+                    self._log(
+                        f"\n[{self.current_url_index}/{self.total_urls}] "
                         f"Elaborazione: {url[:50]}{'...' if len(url) > 50 else ''}"
                     )
                 else:
-                    self.log_signal.emit(
-                        f"📺 Elaborazione: {url[:50]}{'...' if len(url) > 50 else ''}"
+                    self._log(
+                        f"Elaborazione: {url[:50]}{'...' if len(url) > 50 else ''}"
                     )
 
                 try:
                     ydl.download([url])
                     success_count += 1
                     if self.total_urls > 1:
-                        self.log_signal.emit(
-                            f"✅ [{self.current_url_index}/{self.total_urls}] Completato!"
+                        self._log(
+                            f"[OK] [{self.current_url_index}/{self.total_urls}] Completato!"
                         )
                     else:
-                        self.log_signal.emit("✅ Download completato!")
+                        self._log("[OK] Download completato!")
 
                 except Exception as e:
                     msg = str(e)
@@ -117,40 +122,41 @@ class YtDlpDownloader(QObject):
                         break
                     errore_rilevato = True
                     if "[WinError 2]" in msg:
-                        self.log_signal.emit(
-                            f"❌ [{self.current_url_index}/{self.total_urls}] "
-                            "Errore: FFmpeg non trovato o non configurato correttamente."
+                        self._log(
+                            f"[ERRORE] [{self.current_url_index}/{self.total_urls}] "
+                            "FFmpeg non trovato o non configurato correttamente."
                         )
                     else:
-                        self.log_signal.emit(
-                            f"❌ [{self.current_url_index}/{self.total_urls}] Errore: {msg}"
+                        self._log(
+                            f"[ERRORE] [{self.current_url_index}/{self.total_urls}] {msg}"
                         )
 
                 self.progress_signal.emit(self.current_url_index, self.total_urls)
 
-        self.log_signal.emit("\n" + "=" * 50)
+        self._log("\n" + "=" * 50)
         if annullato:
             if self.total_urls > 1:
-                self.log_signal.emit(
-                    f"⚠️ Annullato. {success_count}/{self.total_urls} download completati prima "
-                    "dell'interruzione."
+                self._log(
+                    f"[ANNULLATO] {success_count}/{self.total_urls} download completati "
+                    "prima dell'interruzione."
                 )
             else:
-                self.log_signal.emit("⚠️ Download annullato dall'utente.")
+                self._log("[ANNULLATO] Download annullato dall'utente.")
         elif not errore_rilevato:
             if self.total_urls > 1:
-                self.log_signal.emit(
-                    f"🎉 COMPLETATO! Tutti i {self.total_urls} download eseguiti con successo!"
+                self._log(
+                    f"[OK] COMPLETATO - tutti i {self.total_urls} download eseguiti con successo!"
                 )
             else:
-                self.log_signal.emit("🎉 COMPLETATO! Download eseguito con successo!")
+                self._log("[OK] COMPLETATO - download eseguito con successo!")
         else:
             if self.total_urls > 1:
-                self.log_signal.emit(
-                    f"⚠️ COMPLETATO CON ERRORI! {success_count}/{self.total_urls} download riusciti."
+                self._log(
+                    f"[ATTENZIONE] COMPLETATO CON ERRORI - "
+                    f"{success_count}/{self.total_urls} download riusciti."
                 )
             else:
-                self.log_signal.emit("❌ ERRORE! Download fallito.")
+                self._log("[ERRORE] Download fallito.")
 
         self.finished.emit()
 
@@ -191,42 +197,42 @@ class YtDlpDownloader(QObject):
             raise ValueError("Download annullato dall'utente")
 
         if d["status"] == "downloading":
-            percent = d.get("_percent_str", "N/A").strip()
+            percent = sanitize_log_text(d.get("_percent_str", "N/A").strip())
             now = time.time()
             if percent == self._last_progress_pct and now - self._last_progress_log < 1.0:
                 return
             self._last_progress_pct = percent
             self._last_progress_log = now
 
-            speed = d.get("_speed_str", "N/A").strip()
-            eta = d.get("_eta_str", "N/A")
+            speed = sanitize_log_text(d.get("_speed_str", "N/A").strip())
+            eta = sanitize_log_text(d.get("_eta_str", "N/A"))
             if self.total_urls > 1:
-                self.log_signal.emit(
-                    f"⬇ [{self.current_url_index}/{self.total_urls}] "
+                self._log(
+                    f"[{self.current_url_index}/{self.total_urls}] "
                     f"{percent} @ {speed} ETA {eta}"
                 )
             else:
-                self.log_signal.emit(f"⬇ {percent} @ {speed} ETA {eta}")
+                self._log(f"{percent} @ {speed} ETA {eta}")
 
         elif d["status"] == "finished":
             if self.total_urls > 1:
-                self.log_signal.emit(
-                    f"⏳ [{self.current_url_index}/{self.total_urls}] "
+                self._log(
+                    f"[{self.current_url_index}/{self.total_urls}] "
                     "Post-processing in corso..."
                 )
             else:
-                self.log_signal.emit("⏳ Post-processing in corso...")
+                self._log("Post-processing in corso...")
 
     def debug(self, msg):
         if msg.startswith("[debug] "):
             return
-        self.log_signal.emit(f"[DEBUG] {msg}")
+        self._log(f"[DEBUG] {msg}")
 
     def warning(self, msg):
-        self.log_signal.emit(f"[WARN] {msg}")
+        self._log(f"[WARN] {msg}")
 
     def error(self, msg):
         msg_str = str(msg)
         if "WinError 2" in msg_str:
             return
-        self.log_signal.emit(f"[ERROR] {msg}")
+        self._log(f"[ERROR] {msg}")

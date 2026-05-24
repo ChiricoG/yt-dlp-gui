@@ -1,9 +1,14 @@
 
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+# Sequenze ANSI (es. colori nel progresso yt-dlp) e caratteri di controllo
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 FFMPEG_EXE = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
 FFPROBE_EXE = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
@@ -175,3 +180,13 @@ def parse_urls(text):
             if part:
                 urls.append(part)
     return urls
+
+
+def sanitize_log_text(text):
+    """Rimuove codici ANSI e caratteri di controllo per log leggibili in QTextEdit."""
+    if text is None:
+        return ""
+    cleaned = _ANSI_ESCAPE_RE.sub("", str(text))
+    cleaned = cleaned.replace("\r", "")
+    cleaned = _CONTROL_CHARS_RE.sub("", cleaned)
+    return cleaned

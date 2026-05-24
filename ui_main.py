@@ -7,7 +7,13 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread
 from downloader import YtDlpDownloader
-from utils import get_ffmpeg_status, get_persistent_ffmpeg_dir, get_bundled_ffmpeg_dir, parse_urls
+from utils import (
+    get_ffmpeg_status,
+    get_persistent_ffmpeg_dir,
+    get_bundled_ffmpeg_dir,
+    parse_urls,
+    sanitize_log_text,
+)
 
 
 class MainWindow(QMainWindow):
@@ -83,7 +89,7 @@ class MainWindow(QMainWindow):
 
         if not get_ffmpeg_status():
             self.log(
-                f"⚠️ ffmpeg non trovato (né di sistema, né in {get_persistent_ffmpeg_dir()}, "
+                f"[ATTENZIONE] ffmpeg non trovato (né di sistema, né in {get_persistent_ffmpeg_dir()}, "
                 f"né in {get_bundled_ffmpeg_dir()}). Alcune funzionalità potrebbero non funzionare."
             )
 
@@ -93,7 +99,7 @@ class MainWindow(QMainWindow):
             self.dest_path.setText(folder)
 
     def log(self, msg):
-        self.log_output.append(msg)
+        self.log_output.append(sanitize_log_text(msg))
 
     def update_progress(self, current, total):
         if total > 0:
@@ -122,20 +128,20 @@ class MainWindow(QMainWindow):
 
         dest = self.dest_path.text().strip()
         if not dest:
-            self.log("❌ Seleziona una cartella di destinazione!")
+            self.log("[ERRORE] Seleziona una cartella di destinazione!")
             return None
         if not os.path.isdir(dest):
-            self.log("❌ La cartella di destinazione non esiste!")
+            self.log("[ERRORE] La cartella di destinazione non esiste!")
             return None
         if not os.access(dest, os.W_OK):
-            self.log("❌ La cartella di destinazione non è scrivibile!")
+            self.log("[ERRORE] La cartella di destinazione non è scrivibile!")
             return None
         return dest
 
     def start_download(self):
         urls = parse_urls(self.url_input.toPlainText())
         if not urls:
-            self.log("❌ Inserisci almeno un URL valido!")
+            self.log("[ERRORE] Inserisci almeno un URL valido!")
             return
 
         simulate = self.checkbox_simulate.isChecked()
@@ -150,8 +156,8 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Inizializzazione...")
 
         if len(urls) > 1:
-            self.log("\n🎬 === INIZIO SESSIONE DOWNLOAD ===")
-            self.log(f"📋 URLs da scaricare: {len(urls)}")
+            self.log("\n=== INIZIO SESSIONE DOWNLOAD ===")
+            self.log(f"URLs da scaricare: {len(urls)}")
 
         options = {
             "urls": urls,
